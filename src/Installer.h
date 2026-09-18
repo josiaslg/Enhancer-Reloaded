@@ -38,6 +38,10 @@ static std::wstring logPath() { return std::wstring(INSTALL_DIR) + L"\\install.l
 static void log(const std::wstring& s) {
     g_log += s + L"\r\n";
     HANDLE f = CreateFileW(logPath().c_str(), FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (f == INVALID_HANDLE_VALUE) {   // install.log itself locked (e.g. by security software after a quarantine restore): log under ProgramData instead
+        CreateDirectoryW(LOG_DIR, nullptr);
+        f = CreateFileW((std::wstring(LOG_DIR) + L"\\install.log").c_str(), FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+    }
     if (f != INVALID_HANDLE_VALUE) {
         std::wstring line = s + L"\r\n"; int n = WideCharToMultiByte(CP_UTF8, 0, line.data(), (int)line.size(), nullptr, 0, nullptr, nullptr);
         std::string a(n, '\0'); WideCharToMultiByte(CP_UTF8, 0, line.data(), (int)line.size(), &a[0], n, nullptr, nullptr);
@@ -325,7 +329,7 @@ static int runInstall(HINSTANCE inst, int dllResourceId) {
         if (RegCreateKeyExW(HKEY_LOCAL_MACHINE, UNINSTALL_KEY, 0, nullptr, 0, KEY_WRITE | KEY_WOW64_64KEY, nullptr, &k, nullptr) == ERROR_SUCCESS) {
             auto s = [&](const wchar_t* n, const std::wstring& v) { RegSetValueExW(k, n, 0, REG_SZ, (const BYTE*)v.c_str(), (DWORD)((v.size() + 1) * sizeof(wchar_t))); };
             auto d = [&](const wchar_t* n, DWORD v) { RegSetValueExW(k, n, 0, REG_DWORD, (const BYTE*)&v, sizeof v); };
-            s(L"DisplayName", L"Enhancer Reloaded"); s(L"DisplayVersion", L"1.0.0"); s(L"Publisher", L"josiaslg");
+            s(L"DisplayName", L"Enhancer Reloaded"); s(L"DisplayVersion", L"1.1.0"); s(L"Publisher", L"josiaslg");
             s(L"URLInfoAbout", L"https://github.com/josiaslg/Enhancer-Reloaded"); s(L"InstallLocation", INSTALL_DIR); s(L"DisplayIcon", installExePath());
             s(L"UninstallString", L"\"" + installExePath() + L"\" --uninstall-ui"); s(L"QuietUninstallString", L"\"" + installExePath() + L"\" --uninstall");
             d(L"NoModify", 1); d(L"NoRepair", 1); d(L"EstimatedSize", 900);

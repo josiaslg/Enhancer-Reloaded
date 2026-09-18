@@ -4,7 +4,7 @@ Fonte: `dsp_enh.dll` (Ioscasoft, 20/out/2001, x86, VC6), analisada com Ghidra 12
 host de 32 bits que carrega a DLL original e mede a saída (dinâmica). Todos os coeficientes abaixo foram
 conferidos contra a memória do engine em tempo de execução a 44 100 Hz.
 
-Arquivos de apoio (pasta `C:\Users\Josias\Tools\enhancer_re`):
+Arquivos de apoio (pasta de trabalho da engenharia reversa, nao incluida no repositorio):
 - `out/decompiled.c`, `out/listing.asm`, `out/symbols.txt` — saída do Ghidra (247 funções).
 - `host/host3.c` + `host/build3.bat` — host de teste sem CRT (resolve kernel32 via PEB) que carrega a DLL,
   configura os sliders e processa `host/in_*.raw` gerando `host/out/<cfg>_<sinal>.raw` (int16 mono 44,1 kHz).

@@ -1,0 +1,4 @@
+Name=LG ULTRAFINE
+ModeEffect=
+Modes=
+DisableSysFx=0

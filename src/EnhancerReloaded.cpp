@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: BSD-2-Clause
 // Copyright (c) 2026 josiaslg <josiaslg@bsd.com.br> - https://github.com/josiaslg/Enhancer-Reloaded
 // EnhancerSkin.cpp - native control panel for the Enhancer APO.
-// Two looks: "vector" (default) redraws the original layout with the original colours at any scale with crisp
-// fonts; "pixel" blits the original skin sprite sheet extracted from dsp_enh.dll with integer zoom.
+// Three templates (right-click -> Template): "Classic" (default) redraws the original layout with the original
+// colours at any scale with crisp fonts; "Original skin" blits the sprite sheet extracted from dsp_enh.dll with
+// integer zoom; "Modern" is a flat mixing-console look with vertical faders and digital readouts.
 // Talks to the APO through HKLM\SOFTWARE\EnhancerAPO (params) and reads AutoGain published by the APO.
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
@@ -20,7 +21,8 @@
 #include "Installer.h"
 
 static const wchar_t* PARAM_KEY = L"SOFTWARE\\EnhancerAPO";
-static const int W = 275, H = 232;
+static const int W = 275, H = 232;     // classic / original-skin base size (logical px)
+static const int MW = 504, MH = 268;   // modern (mixer) base size
 static const int NSL = 10;
 static const wchar_t* SL_NAMES[NSL] = {L"Volume", L"HarmBass", L"HarmBassRange", L"DrumBass", L"DrumBassRange", L"Dry", L"HarmTreble", L"HarmTrebleRange", L"Ambience", L"AmbienceRange"};
 static const wchar_t* SL_LABELS[NSL] = {L"Volume", L"Harmonic Bass", L"Harmonic Bass Range", L"Drum Bass", L"Drum Bass Range", L"Dry Signal", L"Harmonic Treble", L"Harmonic Treble Range", L"Ambience", L"Ambience Range"};
@@ -38,6 +40,19 @@ static const COLORREF C_BG = RGB(33, 33, 57), C_GROOVE = RGB(24, 24, 16), C_GRAY
 static const COLORREF C_GREEN = RGB(0, 255, 0), C_CYAN = RGB(0, 239, 239), C_RED = RGB(255, 0, 0), C_GOLD = RGB(222, 222, 107);
 static const COLORREF C_FRAME = RGB(90, 107, 132), C_FRAME2 = RGB(24, 24, 49), C_TITLEBTN = RGB(123, 132, 156);
 static const COLORREF C_BTN = RGB(156, 156, 156), C_BTN_HI = RGB(181, 189, 189), C_BTN_LO = RGB(99, 99, 107), C_LED_OFF = RGB(24, 72, 24);
+// modern (mixer) template: 10 vertical channel strips grouped by section, digital readouts, limiter meter, flat buttons
+static const int MS_X[NSL] = {10, 72, 116, 166, 210, 260, 310, 354, 404, 448};
+static const int MS_W[NSL] = {56, 44, 44, 44, 44, 44, 44, 44, 44, 44};
+static const int MS_GROUP[NSL] = {0, 1, 1, 2, 2, 3, 4, 4, 5, 5};
+static const wchar_t* MS_GROUP_NAME[6] = {L"VOLUME", L"HARMONIC BASS", L"DRUM BASS", L"DRY", L"HARMONIC TREBLE", L"AMBIENCE"};
+static const wchar_t* MS_SUB[NSL] = {L"MASTER", L"LEVEL", L"RANGE", L"LEVEL", L"RANGE", L"SIGNAL", L"LEVEL", L"RANGE", L"LEVEL", L"RANGE"};
+static const COLORREF MS_ACCENT[6] = {RGB(230, 232, 236), RGB(255, 140, 0), RGB(255, 86, 86), RGB(96, 214, 120), RGB(0, 196, 255), RGB(176, 112, 255)};
+static const int M_TITLE_H = 22, M_HDR_Y0 = 28, M_HDR_Y1 = 41, M_SUB_Y = 43, M_LCD_Y0 = 55, M_LCD_Y1 = 71, M_TRK_Y0 = 80, M_TRK_Y1 = 208, M_PANEL_Y1 = 220;
+static const int M_CAP_W = 26, M_CAP_H = 14, M_BTN_Y0 = 228, M_BTN_Y1 = 256, M_BTN_X0 = 12, M_BTN_W = 84, M_BTN_GAP = 6;
+static const RECT M_RC_MIN = {462, 3, 480, 19}, M_RC_CLOSE = {482, 3, 500, 19};
+static const COLORREF M_BG = RGB(28, 29, 33), M_TITLE = RGB(20, 21, 25), M_PANEL = RGB(38, 40, 46), M_LINE = RGB(62, 64, 72), M_TEXT = RGB(170, 175, 185);
+static const COLORREF M_WHITE = RGB(235, 237, 240), M_LCD = RGB(8, 10, 12), M_CAP = RGB(72, 75, 84), M_CAP_HI = RGB(112, 116, 126), M_CAP_LO = RGB(18, 19, 22);
+static const COLORREF M_GREEN = RGB(70, 230, 110), M_YELLOW = RGB(250, 210, 60), M_ORANGE = RGB(255, 150, 40), M_RED = RGB(255, 70, 70);
 
 struct Preset { std::wstring name; int v[NSL]; };
 static const wchar_t* FACTORY =
@@ -49,11 +64,18 @@ L"Deep Bass boost|72,63,75,0,0,100,30,85,0,50;Extrem Bass boost|72,62,62,62,38,1
 static HINSTANCE g_inst; static HWND g_wnd; static HBITMAP g_skin; static HDC g_skinDC;
 static int g_val[NSL]; static bool g_power = true, g_boost = false; static double g_autoGain = 1.0;
 static int g_drag = -1; static std::vector<Preset> g_presets; static bool g_keyOk = false;
-static int g_zoom10 = 10; static bool g_vector = true; static int g_dpi = 96;   // zoom in tenths (10 = 1x)
+enum Look { LOOK_CLASSIC = 0, LOOK_PIXEL = 1, LOOK_MODERN = 2 };
+static int g_zoom10 = 10; static int g_look = LOOK_CLASSIC; static int g_dpi = 96;   // zoom in tenths (10 = 1x)
 
-static double curScale() { return g_vector ? (g_zoom10 / 10.0) * g_dpi / 96.0 : (double)std::max(1, g_zoom10 / 10); }
-static int winW() { return (int)std::lround(W * curScale()); }
-static int winH() { return (int)std::lround(H * curScale()); }
+// the original-skin template scales by integer zoom only (sprites); the drawn templates scale freely and follow the DPI
+static double curScale() { return g_look == LOOK_PIXEL ? (double)std::max(1, g_zoom10 / 10) : (g_zoom10 / 10.0) * g_dpi / 96.0; }
+static int baseW() { return g_look == LOOK_MODERN ? MW : W; }
+static int baseH() { return g_look == LOOK_MODERN ? MH : H; }
+static int winW() { return (int)std::lround(baseW() * curScale()); }
+static int winH() { return (int)std::lround(baseH() * curScale()); }
+static void iniSet(const wchar_t* sec, const wchar_t* key, const wchar_t* val);
+static std::wstring iniGet(const wchar_t* sec, const wchar_t* key, const wchar_t* def);
+static void saveState();
 
 // ---------------------------------------------------------------- registry
 static bool regReadAll() {
@@ -174,7 +196,86 @@ struct VG {
         if (shadow) { RECT r2 = r; OffsetRect(&r2, std::max(1, X(0.5)), std::max(1, X(0.5))); SetTextColor(dc, *shadow); DrawTextW(dc, t, -1, &r2, DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX); }
         SetTextColor(dc, c); DrawTextW(dc, t, -1, &r, DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX); SelectObject(dc, old);
     }
+    void frame(double x0, double y0, double x1, double y1, COLORREF c) {   // 1 logical px outline
+        fill(x0, y0, x1, y0 + 1, c); fill(x0, y1 - 1, x1, y1, c); fill(x0, y0, x0 + 1, y1, c); fill(x1 - 1, y0, x1, y1, c);
+    }
+    double width(const wchar_t* t, HFONT f) { HFONT old = (HFONT)SelectObject(dc, f); SIZE sz{}; GetTextExtentPoint32W(dc, t, (int)wcslen(t), &sz); SelectObject(dc, old); return sz.cx / s; }
+    void line(double x0, double y0, double x1, double y1, COLORREF c, double w = 1.0) {
+        HPEN p = CreatePen(PS_SOLID, std::max(1, X(w)), c); HPEN op = (HPEN)SelectObject(dc, p);
+        MoveToEx(dc, X(x0), X(y0), nullptr); LineTo(dc, X(x1), X(y1)); SelectObject(dc, op); DeleteObject(p);
+    }
 };
+static COLORREF mix(COLORREF a, COLORREF b, double t) {   // linear blend a -> b
+    auto ch = [&](int sa, int sb) { return std::clamp((int)std::lround(sa + (sb - sa) * t), 0, 255); };
+    return RGB(ch(GetRValue(a), GetRValue(b)), ch(GetGValue(a), GetGValue(b)), ch(GetBValue(a), GetBValue(b)));
+}
+// --- modern look: flat dark mixing console, vertical faders, digital readouts, limiter meter
+static int modernTrackX(int i) { return MS_X[i] + (i == 0 ? 20 : MS_W[i] / 2); }   // the Volume strip keeps room for the meter on its right
+static double modernCapY(int v) { return M_TRK_Y1 - v * (double)(M_TRK_Y1 - M_TRK_Y0) / 100.0; }
+static void paintModern(HDC dc) {
+    double s = curScale(); VG g{dc, s};
+    HFONT fTitle = g.font(10.5, true), fGroup = g.font(7, true), fSub = g.font(6.5, false), fLcd = g.font(10.5, true, L"Consolas");
+    HFONT fBtn = g.font(7.5, true), fTiny = g.font(5.5, true), fSmall = g.font(6.5, false);
+    g.fill(0, 0, MW, MH, M_BG);
+    // title bar
+    g.fill(0, 0, MW, M_TITLE_H, M_TITLE); g.fill(0, M_TITLE_H, MW, M_TITLE_H + 1, M_LINE);
+    g.text(12, 4, L"ENHANCER", M_WHITE, fTitle); g.text(12 + g.width(L"ENHANCER ", fTitle), 4, L"RELOADED", MS_ACCENT[5], fTitle);
+    g.fill(M_RC_MIN.left + 4, M_RC_MIN.bottom - 5, M_RC_MIN.right - 4, M_RC_MIN.bottom - 3, M_TEXT);
+    g.line(M_RC_CLOSE.left + 5, M_RC_CLOSE.top + 3, M_RC_CLOSE.right - 5, M_RC_CLOSE.bottom - 3, M_TEXT, 1.2);
+    g.line(M_RC_CLOSE.right - 5, M_RC_CLOSE.top + 3, M_RC_CLOSE.left + 5, M_RC_CLOSE.bottom - 3, M_TEXT, 1.2);
+    // section panels with their coloured header band
+    for (int grp = 0; grp < 6; grp++) {
+        int first = -1, last = -1; for (int i = 0; i < NSL; i++) if (MS_GROUP[i] == grp) { if (first < 0) first = i; last = i; }
+        double x0 = MS_X[first], x1 = MS_X[last] + MS_W[last]; COLORREF acc = MS_ACCENT[grp];
+        g.fill(x0, M_HDR_Y0, x1, M_PANEL_Y1, M_PANEL); g.frame(x0, M_HDR_Y0, x1, M_PANEL_Y1, M_LINE);
+        g.fill(x0, M_HDR_Y0, x1, M_HDR_Y1, mix(M_PANEL, acc, 0.16)); g.fill(x0, M_HDR_Y0, x1, M_HDR_Y0 + 2, acc); g.fill(x0, M_HDR_Y1, x1, M_HDR_Y1 + 1, M_LINE);
+        g.textCentered(x0, M_HDR_Y0 + 2, x1, M_HDR_Y1, MS_GROUP_NAME[grp], acc, fGroup);
+        if (last != first) g.fill(MS_X[last], M_HDR_Y1 + 1, MS_X[last] + 1, M_PANEL_Y1 - 1, M_LINE);
+    }
+    // channel strips
+    const double len = M_TRK_Y1 - M_TRK_Y0;
+    for (int i = 0; i < NSL; i++) {
+        COLORREF acc = MS_ACCENT[MS_GROUP[i]]; double cx = modernTrackX(i); bool act = (g_drag == i);
+        g.textCentered(cx - 20, M_SUB_Y, cx + 20, M_SUB_Y + 10, MS_SUB[i], M_TEXT, fSub);
+        // digital readout: dB for the volume, 0..100 / OFF for the effects
+        wchar_t t[16]; int v = g_val[i];
+        if (i == 0) swprintf_s(t, L"%+.1f", 0.4 * v - 20.0); else if (v == 0 && i != 5) wcscpy_s(t, L"OFF"); else swprintf_s(t, L"%d", v);
+        g.fill(cx - 19, M_LCD_Y0, cx + 19, M_LCD_Y1, M_LCD); g.frame(cx - 19, M_LCD_Y0, cx + 19, M_LCD_Y1, M_LINE);
+        g.textCentered(cx - 19, M_LCD_Y0, cx + 19, M_LCD_Y1, t, act ? C_CYAN : (g_power ? acc : M_TEXT), fLcd);
+        // fader: groove, scale ticks, lit run below the cap, cap with the accent line
+        g.fill(cx - 4, M_TRK_Y0, cx + 4, M_TRK_Y1, M_LCD); g.frame(cx - 4, M_TRK_Y0, cx + 4, M_TRK_Y1, M_LINE);
+        for (int k = 0; k <= 10; k++) { double y = M_TRK_Y1 - k * len / 10.0; double w = (k % 5 == 0) ? 6 : 3; g.fill(cx - 7 - w, y, cx - 7, y + 1, M_LINE); g.fill(cx + 7, y, cx + 7 + w, y + 1, M_LINE); }
+        double cy = modernCapY(v);
+        g.fill(cx - 2, cy, cx + 2, M_TRK_Y1 - 1, g_power ? acc : mix(M_BG, acc, 0.3));
+        g.box(cx - M_CAP_W / 2, cy - M_CAP_H / 2, cx + M_CAP_W / 2, cy + M_CAP_H / 2, act ? M_CAP_HI : M_CAP, act ? RGB(150, 155, 165) : M_CAP_HI, M_CAP_LO);
+        g.fill(cx - M_CAP_W / 2 + 3, cy - 1, cx + M_CAP_W / 2 - 3, cy + 1, act ? C_CYAN : acc);
+        g.fill(cx - M_CAP_W / 2 + 3, cy - 5, cx + M_CAP_W / 2 - 3, cy - 4, M_CAP_LO); g.fill(cx - M_CAP_W / 2 + 3, cy + 4, cx + M_CAP_W / 2 - 3, cy + 5, M_CAP_LO);
+        if (i == 0) {   // limiter meter: effective volume position (AutoGain applied), red lamp while the limiter is pulling down
+            double mx0 = MS_X[0] + 42, mx1 = MS_X[0] + 52; const int NSEG = 16; double segH = len / NSEG;
+            bool limiting = g_power && g_autoGain < 0.999; int lit = g_power ? (int)std::lround(maxIndicatorValue() * NSEG / 100.0) : 0;
+            g.textCentered(mx0 - 2, M_LCD_Y1 - 9, mx1 + 2, M_LCD_Y1, L"LIM", limiting ? M_RED : M_TEXT, fTiny);
+            for (int k = 0; k < NSEG; k++) {
+                COLORREF c = k >= NSEG - 1 ? M_RED : (k >= NSEG - 4 ? M_YELLOW : M_GREEN); double y1 = M_TRK_Y1 - k * segH, y0 = y1 - segH;
+                g.fill(mx0, y0 + 1, mx1, y1 - 0.5, k < lit ? c : mix(M_PANEL, c, 0.15));
+            }
+            g.fill(mx0, M_TRK_Y1 + 3, mx1, M_TRK_Y1 + 9, limiting ? M_RED : mix(M_PANEL, M_RED, 0.2)); g.frame(mx0, M_TRK_Y1 + 3, mx1, M_TRK_Y1 + 9, M_LINE);
+        }
+    }
+    // button bar
+    const wchar_t* labels[5] = {L"POWER", L"BOOST", L"PRESETS \x25BE", L"HELP", L"ABOUT"};
+    for (int b = 0; b < 5; b++) {
+        double x0 = M_BTN_X0 + b * (M_BTN_W + M_BTN_GAP), x1 = x0 + M_BTN_W;
+        bool on = b == 0 ? g_power : (b == 1 ? g_boost : false); COLORREF led = b == 0 ? M_GREEN : M_ORANGE;
+        g.fill(x0, M_BTN_Y0, x1, M_BTN_Y1, on ? mix(M_PANEL, led, 0.28) : M_PANEL); g.frame(x0, M_BTN_Y0, x1, M_BTN_Y1, on ? mix(M_LINE, led, 0.5) : M_LINE);
+        g.fill(x0, M_BTN_Y1 - 2, x1, M_BTN_Y1 - 1, on ? led : M_LINE);
+        double tx0 = x0;
+        if (b < 2) { g.fill(x0 + 9, M_BTN_Y0 + 10, x0 + 17, M_BTN_Y0 + 18, on ? led : mix(M_PANEL, led, 0.25)); g.frame(x0 + 9, M_BTN_Y0 + 10, x0 + 17, M_BTN_Y0 + 18, M_CAP_LO); tx0 += 12; }
+        g.textCentered(tx0, M_BTN_Y0, x1, M_BTN_Y1, labels[b], on ? M_WHITE : M_TEXT, fBtn);
+    }
+    g.text(MW - 12, M_BTN_Y0 + 4, L"v1.1", M_TEXT, fSmall, TA_RIGHT | TA_TOP); g.text(MW - 12, M_BTN_Y0 + 15, L"josiaslg", M_TEXT, fSmall, TA_RIGHT | TA_TOP);
+    g.frame(0, 0, MW, MH, M_LINE);
+    for (HFONT f : {fTitle, fGroup, fSub, fLcd, fBtn, fTiny, fSmall}) DeleteObject(f);
+}
 static void paintVector(HDC dc) {
     double s = curScale(); VG g{dc, s};
     HFONT fLabel = g.font(8.5, false), fTitle = g.font(9.5, true), fKnob = g.font(8, true), fBtn = g.font(8.5, false), fSmall = g.font(6.5, true);
@@ -221,29 +322,49 @@ static void paintVector(HDC dc) {
 static void paint(HDC dc) {
     int w = winW(), h = winH();
     HDC m = CreateCompatibleDC(dc); HBITMAP bmp = CreateCompatibleBitmap(dc, w, h); HBITMAP old = (HBITMAP)SelectObject(m, bmp);
-    if (g_vector) paintVector(m); else paintPixel(m);
+    if (g_look == LOOK_MODERN) paintModern(m); else if (g_look == LOOK_PIXEL) paintPixel(m); else paintVector(m);
     BitBlt(dc, 0, 0, w, h, m, 0, 0, SRCCOPY);
     SelectObject(m, old); DeleteObject(bmp); DeleteDC(m);
 }
 static void redraw() { InvalidateRect(g_wnd, nullptr, FALSE); }
-static void applyLook(HWND h, int zoom10, bool vec) {
-    g_zoom10 = zoom10; g_vector = vec; setUserPref(L"UIScale10", zoom10); setUserPref(L"UIVector", vec ? 1 : 0);
-    SetWindowPos(h, nullptr, 0, 0, winW(), winH(), SWP_NOMOVE | SWP_NOZORDER); redraw();
+static void applyLook(HWND h, int zoom10, int look) {
+    g_zoom10 = zoom10; g_look = look;
+    setUserPref(L"UIScale10", zoom10); setUserPref(L"UILook", look); setUserPref(L"UIVector", look != LOOK_PIXEL ? 1 : 0);   // UIVector kept for older builds
+    // resize in place, but keep the whole panel inside the work area of its monitor (the mixer is wider)
+    RECT r{}; GetWindowRect(h, &r); int x = r.left, y = r.top, w = winW(), hh = winH();
+    MONITORINFO mi{sizeof mi}; if (GetMonitorInfoW(MonitorFromWindow(h, MONITOR_DEFAULTTONEAREST), &mi)) {
+        if (x + w > mi.rcWork.right) x = std::max((int)mi.rcWork.left, (int)mi.rcWork.right - w);
+        if (y + hh > mi.rcWork.bottom) y = std::max((int)mi.rcWork.top, (int)mi.rcWork.bottom - hh);
+    }
+    SetWindowPos(h, nullptr, x, y, w, hh, SWP_NOZORDER); redraw();
+    saveState();   // template, size and (possibly moved) position go to the INI as well
 }
 
-// ---------------------------------------------------------------- interaction (logical coordinates)
-static POINT logical(int x, int y) { double s = curScale(); return {(int)std::floor(x / s), (int)std::floor(y / s)}; }
-static int sliderAt(int x, int y) {
-    if (x < GROOVE_X0 - 2 || x > GROOVE_X1 + 2) return -1;
-    for (int i = 0; i < NSL; i++) { int y0 = GROOVE_Y0 + i * GROOVE_DY; if (y >= y0 - 1 && y <= y0 + GROOVE_H) return i; }
-    return -1;
+// ---------------------------------------------------------------- interaction (logical coordinates, per template)
+struct Geo { RECT sl[NSL]; RECT btn[5]; RECT mn, cl; int captionH; };
+static Geo geo() {
+    Geo g{};
+    if (g_look == LOOK_MODERN) {
+        g.captionH = M_TITLE_H; g.mn = M_RC_MIN; g.cl = M_RC_CLOSE;
+        for (int i = 0; i < NSL; i++) { int cx = modernTrackX(i); g.sl[i] = {cx - M_CAP_W / 2, M_TRK_Y0 - M_CAP_H / 2, cx + M_CAP_W / 2, M_TRK_Y1 + M_CAP_H / 2}; }
+        for (int b = 0; b < 5; b++) { int x = M_BTN_X0 + b * (M_BTN_W + M_BTN_GAP); g.btn[b] = {x, M_BTN_Y0, x + M_BTN_W - 1, M_BTN_Y1 - 1}; }
+    } else {
+        g.captionH = 12; g.mn = RC_MIN; g.cl = RC_CLOSE;
+        for (int i = 0; i < NSL; i++) { int y0 = GROOVE_Y0 + i * GROOVE_DY; g.sl[i] = {GROOVE_X0 - 2, y0 - 1, GROOVE_X1 + 2, y0 + GROOVE_H}; }
+        for (int b = 0; b < 5; b++) g.btn[b] = {BTN[b].x0, BTN_Y0, BTN[b].x1, BTN_Y1};
+    }
+    return g;
 }
-static void setSliderFromX(int i, int x) {
-    double span = GROOVE_X1 - GROOVE_X0 + 1 - KNOB_W;
-    int v = std::clamp((int)std::lround((x - GROOVE_X0 - KNOB_W / 2) * 100.0 / span), 0, 100);
+static bool inR(const RECT& r, int x, int y) { return x >= r.left && x <= r.right && y >= r.top && y <= r.bottom; }   // inclusive bounds
+static POINT logical(int x, int y) { double s = curScale(); return {(int)std::floor(x / s), (int)std::floor(y / s)}; }
+static int sliderAt(int x, int y) { Geo g = geo(); for (int i = 0; i < NSL; i++) if (inR(g.sl[i], x, y)) return i; return -1; }
+static void setSliderFromPt(int i, int x, int y) {
+    int v;
+    if (g_look == LOOK_MODERN) v = std::clamp((int)std::lround((M_TRK_Y1 - y) * 100.0 / (M_TRK_Y1 - M_TRK_Y0)), 0, 100);
+    else { double span = GROOVE_X1 - GROOVE_X0 + 1 - KNOB_W; v = std::clamp((int)std::lround((x - GROOVE_X0 - KNOB_W / 2) * 100.0 / span), 0, 100); }
     if (v != g_val[i]) { g_val[i] = v; regWrite(SL_NAMES[i], v); redraw(); }
 }
-static int buttonAt(int x, int y) { if (y < BTN_Y0 || y > BTN_Y1) return -1; for (int i = 0; i < 5; i++) if (x >= BTN[i].x0 && x <= BTN[i].x1) return i; return -1; }
+static int buttonAt(int x, int y) { Geo g = geo(); for (int i = 0; i < 5; i++) if (inR(g.btn[i], x, y)) return i; return -1; }
 
 // ---------------------------------------------------------------- INI (next to the exe): user presets + last state
 static std::wstring g_ini; static std::vector<Preset> g_userPresets; static std::wstring g_lastPreset;
@@ -255,10 +376,16 @@ static bool stringToValues(const std::wstring& s, int* v) {
 }
 static std::wstring iniGet(const wchar_t* sec, const wchar_t* key, const wchar_t* def = L"") { wchar_t buf[1024]; GetPrivateProfileStringW(sec, key, def, buf, 1024, g_ini.c_str()); return buf; }
 static void iniSet(const wchar_t* sec, const wchar_t* key, const wchar_t* val) { WritePrivateProfileStringW(sec, key, val, g_ini.c_str()); }
-static void saveState() {
+static void saveState() {   // everything the user can set, so the next start looks exactly like the last close
     iniSet(L"State", L"Values", valuesToString(g_val).c_str());
     iniSet(L"State", L"Boost", g_boost ? L"1" : L"0");
     iniSet(L"State", L"LastPreset", g_lastPreset.c_str());
+    iniSet(L"State", L"Template", std::to_wstring(g_look).c_str());
+    iniSet(L"State", L"Size", std::to_wstring(g_zoom10).c_str());
+    if (g_wnd) {
+        iniSet(L"State", L"TopMost", (GetWindowLongPtr(g_wnd, GWL_EXSTYLE) & WS_EX_TOPMOST) ? L"1" : L"0");
+        RECT r; if (IsWindowVisible(g_wnd) && !IsIconic(g_wnd) && GetWindowRect(g_wnd, &r)) { iniSet(L"State", L"X", std::to_wstring(r.left).c_str()); iniSet(L"State", L"Y", std::to_wstring(r.top).c_str()); }
+    }
 }
 static void loadUserPresets() {
     g_userPresets.clear();
@@ -407,8 +534,13 @@ static void showPanel(HWND h) { ShowWindow(h, SW_SHOW); ShowWindow(h, SW_RESTORE
 static LRESULT CALLBACK wndProc(HWND h, UINT m, WPARAM wp, LPARAM lp) {
     switch (m) {
     case WM_CREATE: SetTimer(h, 1, 100, nullptr); trayUpdate(h, true); return 0;
-    case WM_TIMER: if (regReadAll()) { redraw(); trayUpdate(h, false); } return 0;
+    case WM_TIMER: {
+        int before[NSL]; memcpy(before, g_val, sizeof before); bool boostBefore = g_boost;
+        if (regReadAll()) { if (memcmp(before, g_val, sizeof before) != 0 || boostBefore != g_boost) saveState(); redraw(); trayUpdate(h, false); }   // values changed from outside: remember them too
+        return 0;
+    }
     case WM_CLOSE: exitApp(h); return 0;   // closing = effect off + exit (minimize hides to the tray instead)
+    case WM_ENDSESSION: if (wp) { saveState(); g_power = false; regWrite(L"Power", 0); } return 0;   // Windows shutdown / logoff = same as closing
     case WM_DPICHANGED: g_dpi = HIWORD(wp); SetWindowPos(h, nullptr, 0, 0, winW(), winH(), SWP_NOMOVE | SWP_NOZORDER); redraw(); return 0;
     case WM_EXITSIZEMOVE: {   // remember where the user put the panel
         RECT r; if (GetWindowRect(h, &r)) { iniSet(L"State", L"X", std::to_wstring(r.left).c_str()); iniSet(L"State", L"Y", std::to_wstring(r.top).c_str()); }
@@ -419,6 +551,9 @@ static LRESULT CALLBACK wndProc(HWND h, UINT m, WPARAM wp, LPARAM lp) {
         else if (lp == WM_RBUTTONUP) {
             HMENU mnu = CreatePopupMenu();
             AppendMenuW(mnu, MF_STRING, 1, L"Open panel"); AppendMenuW(mnu, MF_STRING | (g_power ? MF_CHECKED : 0), 2, L"Power (effect on)");
+            HMENU lk = CreatePopupMenu(); const wchar_t* looks[] = {L"Classic (high definition)", L"Original skin (pixels)", L"Modern (mixer)"};
+            for (int l = 0; l < 3; l++) AppendMenuW(lk, MF_STRING | (g_look == l ? MF_CHECKED : 0), 21 + l, looks[l]);
+            AppendMenuW(mnu, MF_POPUP, (UINT_PTR)lk, L"Template");
             AppendMenuW(mnu, MF_STRING | (autostartEnabled() ? MF_CHECKED : 0), 4, L"Start with Windows");
             AppendMenuW(mnu, MF_SEPARATOR, 0, nullptr); AppendMenuW(mnu, MF_STRING, 5, L"Uninstall Enhancer Reloaded...");
             AppendMenuW(mnu, MF_SEPARATOR, 0, nullptr); AppendMenuW(mnu, MF_STRING, 3, L"Exit (effect off)");
@@ -428,6 +563,7 @@ static LRESULT CALLBACK wndProc(HWND h, UINT m, WPARAM wp, LPARAM lp) {
             else if (id == 2) { g_power = !g_power; regWrite(L"Power", g_power); redraw(); trayUpdate(h, false); }
             else if (id == 3) exitApp(h);
             else if (id == 4) setAutostart(!autostartEnabled());
+            else if (id >= 21 && id <= 23) { applyLook(h, g_zoom10, id - 21); showPanel(h); }
             else if (id == 5) {
                 if (MessageBoxW(h, L"Remove Enhancer Reloaded from Windows?\n\nThe audio component will be unregistered from every output, the original settings restored, the installed files deleted and the program will close. This program file itself stays where it is (delete it if you want).", L"Uninstall Enhancer Reloaded", MB_YESNO | MB_ICONQUESTION | MB_DEFBUTTON2) == IDYES) {
                     DWORD code = 1;
@@ -442,31 +578,32 @@ static LRESULT CALLBACK wndProc(HWND h, UINT m, WPARAM wp, LPARAM lp) {
     case WM_ERASEBKGND: return 1;
     case WM_NCHITTEST: {
         POINT sp = {GET_X_LPARAM(lp), GET_Y_LPARAM(lp)}; ScreenToClient(h, &sp); POINT pt = logical(sp.x, sp.y);
-        if (pt.y < 12 && !PtInRect(&RC_MIN, pt) && !PtInRect(&RC_CLOSE, pt)) return HTCAPTION;
+        Geo ge = geo();
+        if (pt.y < ge.captionH && !inR(ge.mn, pt.x, pt.y) && !inR(ge.cl, pt.x, pt.y)) return HTCAPTION;
         return HTCLIENT;
     }
     case WM_LBUTTONDOWN: {
-        POINT pt = logical(GET_X_LPARAM(lp), GET_Y_LPARAM(lp)); int x = pt.x, y = pt.y;
-        if (PtInRect(&RC_CLOSE, pt)) { PostMessage(h, WM_CLOSE, 0, 0); return 0; }
-        if (PtInRect(&RC_MIN, pt)) { ShowWindow(h, SW_HIDE); return 0; }   // to the tray, effect keeps running
+        POINT pt = logical(GET_X_LPARAM(lp), GET_Y_LPARAM(lp)); int x = pt.x, y = pt.y; Geo ge = geo();
+        if (inR(ge.cl, x, y)) { PostMessage(h, WM_CLOSE, 0, 0); return 0; }
+        if (inR(ge.mn, x, y)) { ShowWindow(h, SW_HIDE); return 0; }   // to the tray, effect keeps running
         int s = sliderAt(x, y);
-        if (s >= 0) { g_drag = s; SetCapture(h); setSliderFromX(s, x); redraw(); return 0; }
+        if (s >= 0) { g_drag = s; SetCapture(h); setSliderFromPt(s, x, y); redraw(); return 0; }
         int b = buttonAt(x, y);
         if (b == 0) { g_power = !g_power; regWrite(L"Power", g_power); redraw(); trayUpdate(h, false); }
         else if (b == 1) { g_boost = !g_boost; regWrite(L"Boost", g_boost); saveState(); redraw(); }
         else if (b == 2) showPresetsMenu();
         else if (b == 3) ShellExecuteW(h, L"open", L"C:\\Program Files (x86)\\Winamp\\Plugins\\Enhancer\\017\\enhancer.htm", nullptr, nullptr, SW_SHOW);
         else if (b == 4) MessageBoxW(h,
-            L"Enhancer Reloaded 1.0\n\n"
+            L"Enhancer Reloaded 1.1\n\n"
             L"System-wide Windows port (Audio Processing Object) of the Winamp plugin \"Enhancer 0.17\" by Adrian Iosca (2001).\n"
             L"The algorithm was recovered by reverse engineering and validated sample-exact against the original DLL.\n\n"
             L"Author: josiaslg\nGitHub: https://github.com/josiaslg/Enhancer-Reloaded\nE-mail: josiaslg@bsd.com.br\n\n"
             L"License: BSD 2-Clause. The original skin bitmap belongs to the Enhancer 0.17 author.\n"
-            L"Right-click the panel for size, look and tray options.",
+            L"Right-click the panel for size, template (classic / original skin / modern mixer) and tray options.",
             L"About Enhancer", MB_OK | MB_ICONINFORMATION);
         return 0;
     }
-    case WM_MOUSEMOVE: if (g_drag >= 0) setSliderFromX(g_drag, logical(GET_X_LPARAM(lp), GET_Y_LPARAM(lp)).x); return 0;
+    case WM_MOUSEMOVE: if (g_drag >= 0) { POINT pt = logical(GET_X_LPARAM(lp), GET_Y_LPARAM(lp)); setSliderFromPt(g_drag, pt.x, pt.y); } return 0;
     case WM_LBUTTONUP: if (g_drag >= 0) { g_drag = -1; ReleaseCapture(); g_lastPreset.clear(); saveState(); redraw(); } return 0;
     case WM_MOUSEWHEEL: {
         POINT sp = {GET_X_LPARAM(lp), GET_Y_LPARAM(lp)}; ScreenToClient(h, &sp); POINT pt = logical(sp.x, sp.y);
@@ -481,19 +618,19 @@ static LRESULT CALLBACK wndProc(HWND h, UINT m, WPARAM wp, LPARAM lp) {
         HMENU sz = CreatePopupMenu(); const int zooms[] = {10, 15, 20, 30, 40}; const wchar_t* zn[] = {L"1x", L"1.5x", L"2x", L"3x", L"4x"};
         for (int s = 0; s < 5; s++) AppendMenuW(sz, MF_STRING | (zooms[s] == g_zoom10 ? MF_CHECKED : 0), 11 + s, zn[s]);
         AppendMenuW(mnu, MF_POPUP, (UINT_PTR)sz, L"Size");
-        HMENU lk = CreatePopupMenu(); AppendMenuW(lk, MF_STRING | (g_vector ? MF_CHECKED : 0), 21, L"High definition (vector)"); AppendMenuW(lk, MF_STRING | (!g_vector ? MF_CHECKED : 0), 22, L"Original skin (pixels)");
-        AppendMenuW(mnu, MF_POPUP, (UINT_PTR)lk, L"Look");
+        HMENU lk = CreatePopupMenu(); const wchar_t* looks[] = {L"Classic (high definition)", L"Original skin (pixels)", L"Modern (mixer)"};
+        for (int l = 0; l < 3; l++) AppendMenuW(lk, MF_STRING | (g_look == l ? MF_CHECKED : 0), 21 + l, looks[l]);
+        AppendMenuW(mnu, MF_POPUP, (UINT_PTR)lk, L"Template");
         AppendMenuW(mnu, MF_STRING | (autostartEnabled() ? MF_CHECKED : 0), 4, L"Start with Windows");
         AppendMenuW(mnu, MF_SEPARATOR, 0, nullptr); AppendMenuW(mnu, MF_STRING, 3, L"Exit (effect off)");
         if (GetWindowLongPtr(h, GWL_EXSTYLE) & WS_EX_TOPMOST) CheckMenuItem(mnu, 2, MF_CHECKED);
         POINT pt; GetCursorPos(&pt); int id = TrackPopupMenu(mnu, TPM_RETURNCMD, pt.x, pt.y, 0, h, nullptr); DestroyMenu(mnu);
         if (id == 1) ShowWindow(h, SW_MINIMIZE);
-        else if (id == 2) { bool top = GetWindowLongPtr(h, GWL_EXSTYLE) & WS_EX_TOPMOST; SetWindowPos(h, top ? HWND_NOTOPMOST : HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE); }
+        else if (id == 2) { bool top = GetWindowLongPtr(h, GWL_EXSTYLE) & WS_EX_TOPMOST; SetWindowPos(h, top ? HWND_NOTOPMOST : HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE); saveState(); }
         else if (id == 3) exitApp(h);
         else if (id == 4) setAutostart(!autostartEnabled());
-        else if (id >= 11 && id <= 15) { const int zooms[] = {10, 15, 20, 30, 40}; applyLook(h, zooms[id - 11], g_vector); }
-        else if (id == 21) applyLook(h, g_zoom10, true);
-        else if (id == 22) applyLook(h, g_zoom10, false);
+        else if (id >= 11 && id <= 15) { const int zooms[] = {10, 15, 20, 30, 40}; applyLook(h, zooms[id - 11], g_look); }
+        else if (id >= 21 && id <= 23) applyLook(h, g_zoom10, id - 21);
         return 0;
     }
     case WM_DESTROY: KillTimer(h, 1); trayRemove(); PostQuitMessage(0); return 0;
@@ -516,6 +653,20 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, LPWSTR cmdLine, int) {
         return (int)rc;
     }
     if (cmdLine && wcsstr(cmdLine, L"--uninstall")) { if (!wcsstr(cmdLine, L"--from-panel")) inst::closeRunningPanel(); return inst::runUninstall(); }
+    if (cmdLine && wcsstr(cmdLine, L"--snapshot")) {   // developer aid: "--snapshot <template 0..2> <zoom10> <file.bmp>" renders the panel to a BMP and exits
+        int argc = 0; LPWSTR* argv = CommandLineToArgvW(GetCommandLineW(), &argc); std::wstring path = L"snapshot.bmp";
+        for (int i = 1; argv && i < argc; i++) if (!wcscmp(argv[i], L"--snapshot") && i + 3 < argc) { g_look = std::clamp(_wtoi(argv[i + 1]), 0, 2); g_zoom10 = std::clamp(_wtoi(argv[i + 2]), 10, 40); path = argv[i + 3]; }
+        g_dpi = 96; regReadAll();
+        g_skin = (HBITMAP)LoadImageW(inst, MAKEINTRESOURCEW(IDB_SKIN), IMAGE_BITMAP, 0, 0, LR_CREATEDIBSECTION);
+        HDC sdc = GetDC(nullptr); g_skinDC = CreateCompatibleDC(sdc); SelectObject(g_skinDC, g_skin);
+        int w = winW(), hh = winH(); BITMAPINFO bi{}; bi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER); bi.bmiHeader.biWidth = w; bi.bmiHeader.biHeight = -hh; bi.bmiHeader.biPlanes = 1; bi.bmiHeader.biBitCount = 32;
+        void* bits = nullptr; HBITMAP dib = CreateDIBSection(sdc, &bi, DIB_RGB_COLORS, &bits, nullptr, 0); HDC m = CreateCompatibleDC(sdc); HBITMAP old = (HBITMAP)SelectObject(m, dib);
+        paint(m); GdiFlush();
+        FILE* f = _wfopen(path.c_str(), L"wb");
+        if (f) { BITMAPFILEHEADER fh{}; fh.bfType = 0x4D42; fh.bfOffBits = sizeof fh + sizeof(BITMAPINFOHEADER); fh.bfSize = fh.bfOffBits + w * hh * 4; fwrite(&fh, sizeof fh, 1, f); fwrite(&bi.bmiHeader, sizeof(BITMAPINFOHEADER), 1, f); fwrite(bits, (size_t)w * hh * 4, 1, f); fclose(f); }
+        SelectObject(m, old); DeleteObject(dib); DeleteDC(m); ReleaseDC(nullptr, sdc);
+        return f ? 0 : 1;
+    }
     bool startInTray = cmdLine && wcsstr(cmdLine, L"--tray") != nullptr;
     HANDLE single = CreateMutexW(nullptr, TRUE, L"Local\\EnhancerSkin.single");
     if (GetLastError() == ERROR_ALREADY_EXISTS) {   // second instance: bring the running panel back (or explain the wait)
@@ -542,7 +693,14 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, LPWSTR cmdLine, int) {
         inst::closeRunningPanel();   // an open (older) panel would keep the installed exe locked
         DWORD code = 1;
         if (!elevateWithProgress(nullptr, L"--install", L"Enhancer Reloaded - setup", installed ? L"Updating Enhancer Reloaded..." : L"Installing Enhancer Reloaded...", &code)) { MessageBoxW(nullptr, L"Installation was cancelled (administrator approval is required).", L"Enhancer Reloaded", MB_ICONWARNING); if (!installed) return 0; }
-        else if (code != 0) { wchar_t m[160]; swprintf_s(m, L"Installation failed (code %lu). See C:\\Program Files\\EnhancerReloaded\\install.log", code); MessageBoxW(nullptr, m, L"Enhancer Reloaded", MB_ICONERROR); if (!installed) return 0; }
+        else if (code != 0) {
+            const wchar_t* why = code == 2 ? L"the setup helper did not get administrator rights" : code == 3 ? L"the embedded audio component is missing" :
+                code == 4 ? L"the audio component file in C:\\Program Files\\EnhancerReloaded could not be written (in use or locked, typically by security software after a quarantine restore; restart Windows or delete that folder, then run again)" :
+                code == 5 ? L"the installed audio component could not be loaded" : code == 6 ? L"registering the audio component failed" :
+                code == 7 ? L"no active audio output was found" : code == 8 ? L"another setup operation is still running" : L"unexpected error";
+            wchar_t m[640]; swprintf_s(m, L"Installation failed (code %lu): %s.\n\nDetails: install.log in C:\\Program Files\\EnhancerReloaded (or in C:\\ProgramData\\EnhancerAPO when that folder is locked).", code, why);
+            MessageBoxW(nullptr, m, L"Enhancer Reloaded", MB_ICONERROR); if (!installed) return 0;
+        }
         else {
             Sleep(1500);   // give the audio stack a moment to come back
             MessageBoxW(nullptr, installed ? L"The audio component was updated." : L"Enhancer Reloaded was installed. The panel will open now.\nYou will find it in the Start Menu and, while running, as the purple hat in the tray.", L"Enhancer Reloaded - setup", MB_ICONINFORMATION);
@@ -577,7 +735,11 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, LPWSTR cmdLine, int) {
     g_power = true; pushAll(); saveState();
     { HDC dc = GetDC(nullptr); g_dpi = GetDeviceCaps(dc, LOGPIXELSX); int sh = GetDeviceCaps(dc, VERTRES); ReleaseDC(nullptr, dc);
       int z = userPref(L"UIScale10", 0); g_zoom10 = (z >= 10 && z <= 40) ? z : ((sh >= 2000) ? 15 : 10);   // vector mode already scales with DPI
-      g_vector = userPref(L"UIVector", 1) != 0; }
+      int lk = userPref(L"UILook", -1); g_look = (lk >= LOOK_CLASSIC && lk <= LOOK_MODERN) ? lk : (userPref(L"UIVector", 1) != 0 ? LOOK_CLASSIC : LOOK_PIXEL);
+      // the INI (what the user left at the last close) wins over the per-user registry defaults
+      std::wstring st = iniGet(L"State", L"Template"), ss = iniGet(L"State", L"Size");
+      if (!st.empty()) g_look = std::clamp(_wtoi(st.c_str()), (int)LOOK_CLASSIC, (int)LOOK_MODERN);
+      if (!ss.empty()) { int v = _wtoi(ss.c_str()); if (v >= 10 && v <= 40) g_zoom10 = v; } }
     WNDCLASSW wc{}; wc.lpfnWndProc = wndProc; wc.hInstance = inst; wc.lpszClassName = L"EnhancerSkinWnd"; wc.hCursor = LoadCursor(nullptr, IDC_ARROW);
     wc.hIcon = (HICON)LoadImageW(inst, MAKEINTRESOURCEW(IDI_MAIN), IMAGE_ICON, 0, 0, LR_DEFAULTSIZE);
     RegisterClassW(&wc);
@@ -596,6 +758,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, LPWSTR cmdLine, int) {
     }
     g_wnd = CreateWindowExW(WS_EX_APPWINDOW, wc.lpszClassName, L"Enhancer Reloaded", WS_POPUP | WS_SYSMENU | WS_MINIMIZEBOX, px, py, winW(), winH(), nullptr, nullptr, inst, nullptr);
     HDC dc = GetDC(g_wnd); g_skinDC = CreateCompatibleDC(dc); SelectObject(g_skinDC, g_skin); ReleaseDC(g_wnd, dc);
+    if (iniGet(L"State", L"TopMost") == L"1") SetWindowPos(g_wnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
     if (!startInTray) ShowWindow(g_wnd, SW_SHOW);
     MSG msg; while (GetMessage(&msg, nullptr, 0, 0)) { TranslateMessage(&msg); DispatchMessage(&msg); }
     CloseHandle(single);

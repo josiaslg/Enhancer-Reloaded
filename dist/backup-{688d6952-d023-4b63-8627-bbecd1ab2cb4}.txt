@@ -1,0 +1,4 @@
+Name=Realtek Digital Output
+ModeEffect=<none>
+Modes={C18E2F7E-933D-4965-B7D1-1EEF228D2AF3}
+DisableSysFx=<none>

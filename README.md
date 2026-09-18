@@ -8,7 +8,8 @@ automatic volume limiter and the Boost mode, applied to every application, not o
 
 The original DSP algorithm was recovered by reverse engineering the plug-in (`dsp_enh.dll`) and
 reimplemented from scratch; the port reproduces the original output sample-exact. The control panel
-reproduces the original look (vector redraw in high definition, or the original pixel skin).
+offers three templates: the original look (vector redraw in high definition), the original pixel skin,
+and a modern mixing-console look with vertical faders and digital readouts.
 
 Author: **josiaslg** — <https://github.com/josiaslg/Enhancer-Reloaded> — <josiaslg@bsd.com.br>
 License: **BSD 2-Clause** (see [LICENSE](LICENSE)). The algorithm design and the original skin bitmap belong to
@@ -45,11 +46,15 @@ the APO polls it every 300 ms and publishes its automatic gain (`AutoGain`) for 
   effect sliders at 0 = off. Drag the knob, click on the groove or use the mouse wheel.
 - **Power** (LED lit = effect on), **Boost**, **Presets** (11 factory presets, your own presets, save/delete,
   reset), **Help** (original help file, if Winamp is installed), **About**.
-- Right-click the panel: minimize, always on top, size (1x–4x), look (high definition / original skin),
-  start with Windows, exit.
-- Tray icon: open panel, power, start with Windows, uninstall, exit.
-- Settings and presets are kept in `EnhancerReloaded.ini` next to the exe (`[State]` = last values, position,
-  last preset; `[Presets]` = `name=v1,...,v10`). The last state is restored on the next start.
+- Right-click the panel: minimize, always on top, size (1x–4x), template, start with Windows, exit.
+- **Template**: *Classic* (original layout redrawn in high definition), *Original skin* (the pixel skin
+  from the Winamp plug-in) or *Modern (mixer)*: a flat dark console with one vertical fader per
+  parameter grouped by section, digital readouts (Volume in dB, effects 0–100/OFF), a limiter meter next to
+  the Volume fader (lights red while the automatic gain is pulling the level down) and flat buttons.
+- Tray icon: open panel, power, template, start with Windows, uninstall, exit.
+- Settings and presets are kept in `EnhancerReloaded.ini` next to the exe (`[State]` = last slider values, Boost,
+  last preset, template, size, position, always-on-top; `[Presets]` = `name=v1,...,v10`). Everything is
+  restored on the next start exactly as it was left (also on Windows shutdown).
 
 ## Repository layout
 
@@ -95,6 +100,32 @@ build.bat
 Outputs go to `src\build\` and the final `EnhancerReloaded.exe` is copied to `dist\`. The DLL is built first
 because the exe embeds it as a resource.
 
+## Antivirus false positives
+
+Some antivirus products (Bitdefender's "Advanced Threat Defense" is a known case, detection
+`ML:SuspiciousBehavior`) block the installer by **behaviour**, not because of any malicious code. Everything
+this program does is in this repository, but the sequence looks like a lot of malware: an unsigned exe copies
+itself into Program Files, writes a DLL there, registers a COM component that the Windows audio engine
+(`audiodg.exe`) loads, edits the audio device keys, stops and restarts the Windows Audio service, sets
+`DisableProtectedAudioDG` (required for any unsigned APO) and, if you ask for it, adds a Run entry. There is no
+code-signing certificate for this project, so the heuristic has nothing to trust.
+
+If it happens:
+
+1. Add an exception for `C:\Program Files\EnhancerReloaded` and for the folder where you keep the exe
+   (Bitdefender: Protection → Antivirus → Settings → Manage exceptions, including Advanced Threat Defense).
+2. If the antivirus already quarantined and you restored the files, **restart Windows** before running the
+   installer again. Restored files stay locked until the next boot; the installer then fails with
+   "code 4" (cannot write the audio component) and cannot even update `install.log`. In that case the log is
+   written to `C:\ProgramData\EnhancerAPO\install.log` instead.
+3. Run the exe again: it detects the incomplete installation and repairs it. Your settings in
+   `%APPDATA%\EnhancerReloaded\EnhancerReloaded.ini` are kept.
+4. If the folder in Program Files cannot be repaired, delete it and run the installer again; the endpoint
+   backups (`backup-*.txt`) are recreated from the current Windows settings.
+
+You can also report the file as a false positive to your antivirus vendor, or build the exe yourself from
+`src\` (see *Building*) so that the binary comes from your own machine.
+
 ## Notes for developers
 
 - The engine creates APOs through **COM aggregation**: the class factory must accept `pUnkOuter` and the
@@ -118,8 +149,9 @@ ambiência (reverb), limitador automático de volume e o modo Boost, aplicados a
 ao Winamp.
 
 O algoritmo original foi recuperado por engenharia reversa do plug-in (`dsp_enh.dll`) e reimplementado do
-zero; o port reproduz a saída original amostra a amostra. O painel reproduz o visual original (redesenho
-vetorial em alta definição ou a skin de pixels original).
+zero; o port reproduz a saída original amostra a amostra. O painel oferece três templates: o visual original
+(redesenho vetorial em alta definição), a skin de pixels original e um visual moderno de mesa de som com
+faders verticais e mostradores digitais.
 
 Autor: **josiaslg** — <https://github.com/josiaslg/Enhancer-Reloaded> — <josiaslg@bsd.com.br>
 Licença: **BSD 2-Clause** (veja [LICENSE](LICENSE)). O desenho do algoritmo e o bitmap da skin original pertencem
@@ -156,11 +188,16 @@ lê a cada 300 ms e publica o ganho automático (`AutoGain`) para o indicador "m
   sliders de efeito em 0 = desligado. Arraste o knob, clique na trilha ou use a roda do mouse.
 - **Power** (LED aceso = efeito ligado), **Boost**, **Presets** (11 de fábrica, os seus, salvar/apagar, zerar),
   **Help** (ajuda original, se o Winamp estiver instalado), **About**.
-- Botão direito no painel: minimizar, sempre no topo, tamanho (1x–4x), visual (alta definição / skin
-  original), iniciar com o Windows, sair.
-- Ícone da bandeja: abrir painel, power, iniciar com o Windows, desinstalar, sair.
-- Configurações e presets ficam em `EnhancerReloaded.ini` ao lado do exe (`[State]` = últimos valores, posição,
-  último preset; `[Presets]` = `nome=v1,...,v10`). O último estado é restaurado na próxima abertura.
+- Botão direito no painel: minimizar, sempre no topo, tamanho (1x–4x), template, iniciar com o Windows, sair.
+- **Template**: *Classic* (layout original redesenhado em alta definição), *Original skin* (a skin de pixels
+  do plug-in do Winamp) ou *Modern (mixer)*: uma mesa de som escura e plana com um fader vertical por
+  parâmetro agrupado por seção, mostradores digitais (Volume em dB, efeitos 0–100/OFF), um medidor de
+  limitador ao lado do fader de Volume (acende vermelho enquanto o ganho automático está reduzindo o nível) e
+  botões planos.
+- Ícone da bandeja: abrir painel, power, template, iniciar com o Windows, desinstalar, sair.
+- Configurações e presets ficam em `EnhancerReloaded.ini` ao lado do exe (`[State]` = últimos valores dos
+  controles, Boost, último preset, template, tamanho, posição, sempre no topo; `[Presets]` = `nome=v1,...,v10`).
+  Tudo é restaurado na próxima abertura exatamente como foi deixado (também no desligamento do Windows).
 
 ## Estrutura do repositório
 
@@ -205,6 +242,33 @@ build.bat
 
 A saída vai para `src\build\` e o `EnhancerReloaded.exe` final é copiado para `dist\`. A DLL é compilada
 primeiro porque o exe a embute como recurso.
+
+## Falsos positivos de antivírus
+
+Alguns antivírus (o "Advanced Threat Defense" do Bitdefender é um caso conhecido, detecção
+`ML:SuspiciousBehavior`) bloqueiam o instalador pelo **comportamento**, não por código malicioso. Tudo o que o
+programa faz está neste repositório, mas a sequência parece a de muitos malwares: um exe sem assinatura se
+copia para Program Files, grava uma DLL lá, registra um componente COM que o motor de áudio do Windows
+(`audiodg.exe`) carrega, edita as chaves dos dispositivos de som, para e reinicia o serviço de Áudio do
+Windows, ajusta `DisableProtectedAudioDG` (obrigatório para qualquer APO sem assinatura) e, se você pedir, cria
+a entrada de inicialização. O projeto não tem certificado de assinatura de código, então a heurística não tem
+em que confiar.
+
+Se acontecer:
+
+1. Adicione exceções para `C:\Program Files\EnhancerReloaded` e para a pasta onde você guarda o exe
+   (Bitdefender: Proteção → Antivírus → Configurações → Gerenciar exceções, incluindo o Advanced Threat Defense).
+2. Se o antivírus já pôs os arquivos em quarentena e você os restaurou, **reinicie o Windows** antes de rodar o
+   instalador de novo. Arquivos restaurados ficam travados até o próximo boot; o instalador então falha com
+   "código 4" (não consegue gravar o componente de áudio) e nem consegue atualizar o `install.log`. Nesse caso o
+   log é gravado em `C:\ProgramData\EnhancerAPO\install.log`.
+3. Execute o exe de novo: ele detecta a instalação incompleta e faz o reparo. Suas configurações em
+   `%APPDATA%\EnhancerReloaded\EnhancerReloaded.ini` são mantidas.
+4. Se a pasta em Program Files não puder ser reparada, apague-a e rode o instalador de novo; os backups dos
+   dispositivos (`backup-*.txt`) são recriados a partir das configurações atuais do Windows.
+
+Você também pode reportar o arquivo como falso positivo ao fabricante do antivírus, ou compilar o exe você
+mesmo a partir de `src\` (veja *Compilando*), para que o binário venha da sua própria máquina.
 
 ## Notas para desenvolvedores
 
