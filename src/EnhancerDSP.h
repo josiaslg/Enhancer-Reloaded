@@ -9,6 +9,9 @@
 //   * any number of channels (bass is shared from the channel mean; L/R reverb lengths alternate)
 //   * reverb delay lengths scale with the sample rate (the original hard-codes 44.1 kHz lengths)
 //   * output is float, no 16-bit truncation
+//   * optional Haas stereo widening (off by default, not in the original): the mid signal delayed by a few
+//     milliseconds is added to the left and subtracted from the right channel before the limiter, so the
+//     image gets wider while the mono sum stays untouched
 #pragma once
 #include <cmath>
 #include <vector>
@@ -28,6 +31,8 @@ public:
         int harmTrebleRange = 50;
         int ambience = 0;
         int ambienceRange = 50;
+        int haas = 0;         // 0..100 stereo widening amount (0 = off); delayed-mid gain = 0.006 * haas
+        int haasDelay = 15;   // 1..40 ms
         bool boost = false;
         bool power = true;
     };
@@ -84,6 +89,7 @@ public:
         recover = std::pow(10.0, 1.0 / (fs * 20));
         bLp = 1.0 / (PI * dt * 500 + 1); bC = 0.34 / (bLp / (1 - bLp));
         autoGain = 1.0;
+        haasBuf.assign((int)std::lround(fs * 0.05) + 2, 0.0); haasPos = 0;   // up to 50 ms
         setParams(params);
     }
 
@@ -111,6 +117,11 @@ public:
         dampA = r * 0.3 + 0.4; dampB = 1 - dampA;
         for (auto& C : ch) for (int i = 0; i < 5; i++) C.combFb[i] = std::pow(0.01, C.combLen[i] / ((1 + 3 * r) * fs));
         if (wasAmb && !ambOn) clearReverb();
+        bool wasHaas = haasOn;
+        haasOn = p.haas > 0 && nch == 2 && haasBuf.size() > 2;
+        haasGain = 0.006 * std::max(0, std::min(100, p.haas));
+        haasSamples = std::max(1, std::min((int)haasBuf.size() - 1, (int)std::lround(std::max(1, std::min(40, p.haasDelay)) * fs / 1000.0)));
+        if (wasHaas && !haasOn) std::fill(haasBuf.begin(), haasBuf.end(), 0.0);
     }
 
     // Interleaved float in/out, [-1,1]. In-place allowed.
@@ -174,11 +185,16 @@ public:
             }
             // --- output gain, auto gain (shared), limiter (per channel state, shared decision on max)
             double ayMax = 0.0;
-            for (int c = 0; c < nch; c++) {
-                Channel& C = ch[c];
-                C.y = (C.sig + C.bass) * vol * autoGain;
-                ayMax = std::max(ayMax, std::fabs(C.y));
+            for (int c = 0; c < nch; c++) { Channel& C = ch[c]; C.y = (C.sig + C.bass) * vol * autoGain; }
+            if (haasOn) {   // Haas widening: delayed mid, +left / -right (cancels in mono); before the limiter so peaks stay controlled
+                int len = (int)haasBuf.size();
+                haasBuf[haasPos] = 0.5 * (ch[0].y + ch[1].y);
+                int rd = haasPos - haasSamples; if (rd < 0) rd += len;
+                double xd = haasBuf[rd] * haasGain;
+                haasPos = (haasPos + 1 == len) ? 0 : haasPos + 1;
+                ch[0].y += xd; ch[1].y -= xd;
             }
+            for (int c = 0; c < nch; c++) ayMax = std::max(ayMax, std::fabs(ch[c].y));
             if (ayMax <= 29000.0) { if (autoGain < 1.0) autoGain *= recover; }
             else autoGain *= 48.333333333333336 / ayMax + 0.9983333333333333;
             for (int c = 0; c < nch; c++) {
@@ -308,4 +324,5 @@ private:
     double trScale = 0, dry = 1, revDry = 1, wet = 0, dampA = 0.4, dampB = 0.6;
     double vol = 1.0, autoGain = 1.0, recover = 1.0, bLp = 0, bC = 0;
     std::vector<double> boostTab;
+    std::vector<double> haasBuf; int haasPos = 0, haasSamples = 1; double haasGain = 0; bool haasOn = false;
 };

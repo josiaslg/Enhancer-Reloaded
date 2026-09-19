@@ -260,7 +260,7 @@ static int runInstall(HINSTANCE inst, int dllResourceId) {
         HKEY k; DWORD disp = 0;
         if (RegCreateKeyExW(HKEY_LOCAL_MACHINE, PARAM_KEY, 0, nullptr, 0, KEY_WRITE | KEY_WOW64_64KEY, nullptr, &k, &disp) == ERROR_SUCCESS) {
             if (disp == REG_CREATED_NEW_KEY) {
-                struct { const wchar_t* n; DWORD v; } d[] = {{L"Power", 1}, {L"Boost", 0}, {L"Volume", 50}, {L"HarmBass", 0}, {L"HarmBassRange", 50}, {L"DrumBass", 0}, {L"DrumBassRange", 50}, {L"Dry", 100}, {L"HarmTreble", 0}, {L"HarmTrebleRange", 50}, {L"Ambience", 0}, {L"AmbienceRange", 50}};
+                struct { const wchar_t* n; DWORD v; } d[] = {{L"Power", 1}, {L"Boost", 0}, {L"Volume", 50}, {L"HarmBass", 0}, {L"HarmBassRange", 50}, {L"DrumBass", 0}, {L"DrumBassRange", 50}, {L"Dry", 100}, {L"HarmTreble", 0}, {L"HarmTrebleRange", 50}, {L"Ambience", 0}, {L"AmbienceRange", 50}, {L"Haas", 0}, {L"HaasDelay", 15}};
                 for (auto& x : d) RegSetValueExW(k, x.n, 0, REG_DWORD, (const BYTE*)&x.v, sizeof x.v);
             }
             RegCloseKey(k);
@@ -329,7 +329,7 @@ static int runInstall(HINSTANCE inst, int dllResourceId) {
         if (RegCreateKeyExW(HKEY_LOCAL_MACHINE, UNINSTALL_KEY, 0, nullptr, 0, KEY_WRITE | KEY_WOW64_64KEY, nullptr, &k, nullptr) == ERROR_SUCCESS) {
             auto s = [&](const wchar_t* n, const std::wstring& v) { RegSetValueExW(k, n, 0, REG_SZ, (const BYTE*)v.c_str(), (DWORD)((v.size() + 1) * sizeof(wchar_t))); };
             auto d = [&](const wchar_t* n, DWORD v) { RegSetValueExW(k, n, 0, REG_DWORD, (const BYTE*)&v, sizeof v); };
-            s(L"DisplayName", L"Enhancer Reloaded"); s(L"DisplayVersion", L"1.1.0"); s(L"Publisher", L"josiaslg");
+            s(L"DisplayName", L"Enhancer Reloaded"); s(L"DisplayVersion", L"1.2.0"); s(L"Publisher", L"josiaslg");
             s(L"URLInfoAbout", L"https://github.com/josiaslg/Enhancer-Reloaded"); s(L"InstallLocation", INSTALL_DIR); s(L"DisplayIcon", installExePath());
             s(L"UninstallString", L"\"" + installExePath() + L"\" --uninstall-ui"); s(L"QuietUninstallString", L"\"" + installExePath() + L"\" --uninstall");
             d(L"NoModify", 1); d(L"NoRepair", 1); d(L"EstimatedSize", 900);

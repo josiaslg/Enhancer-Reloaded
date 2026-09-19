@@ -63,6 +63,7 @@ L"Deep Bass boost|72,63,75,0,0,100,30,85,0,50;Extrem Bass boost|72,62,62,62,38,1
 
 static HINSTANCE g_inst; static HWND g_wnd; static HBITMAP g_skin; static HDC g_skinDC;
 static int g_val[NSL]; static bool g_power = true, g_boost = false; static double g_autoGain = 1.0;
+static int g_haas = 0, g_haasDelay = 15;   // optional Haas stereo widening: amount 0..100 (0 = off), delay in ms
 static int g_drag = -1; static std::vector<Preset> g_presets; static bool g_keyOk = false;
 enum Look { LOOK_CLASSIC = 0, LOOK_PIXEL = 1, LOOK_MODERN = 2 };
 static int g_zoom10 = 10; static int g_look = LOOK_CLASSIC; static int g_dpi = 96;   // zoom in tenths (10 = 1x)
@@ -85,6 +86,8 @@ static bool regReadAll() {
     for (int i = 0; i < NSL; i++) { int v = std::clamp(rd(SL_NAMES[i], g_val[i]), 0, 100); if (v != g_val[i]) { g_val[i] = v; changed = true; } }
     bool p = rd(L"Power", g_power) != 0, b = rd(L"Boost", g_boost) != 0;
     if (p != g_power || b != g_boost) { g_power = p; g_boost = b; changed = true; }
+    int ha = std::clamp(rd(L"Haas", g_haas), 0, 100), hd = std::clamp(rd(L"HaasDelay", g_haasDelay), 1, 40);
+    if (ha != g_haas || hd != g_haasDelay) { g_haas = ha; g_haasDelay = hd; changed = true; }
     double ag = rd(L"AutoGain", 10000) / 10000.0; if (std::fabs(ag - g_autoGain) > 1e-4) { g_autoGain = ag; changed = true; }
     RegCloseKey(k); return changed;
 }
@@ -188,8 +191,8 @@ struct VG {
         return CreateFontW(-X(px), 0, 0, 0, bold ? FW_BOLD : FW_NORMAL, 0, 0, 0, DEFAULT_CHARSET, OUT_TT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH, face);
     }
     void text(double x, double y, const wchar_t* t, COLORREF c, HFONT f, UINT align = TA_LEFT | TA_TOP) {
-        HFONT old = (HFONT)SelectObject(dc, f); SetBkMode(dc, TRANSPARENT); SetTextColor(dc, c); SetTextAlign(dc, align);
-        TextOutW(dc, X(x), X(y), t, (int)wcslen(t)); SelectObject(dc, old);
+        HFONT old = (HFONT)SelectObject(dc, f); SetBkMode(dc, TRANSPARENT); SetTextColor(dc, c); UINT oldAlign = SetTextAlign(dc, align);
+        TextOutW(dc, X(x), X(y), t, (int)wcslen(t)); SetTextAlign(dc, oldAlign); SelectObject(dc, old);   // DrawText later on assumes TA_LEFT
     }
     void textCentered(double x0, double y0, double x1, double y1, const wchar_t* t, COLORREF c, HFONT f, COLORREF* shadow = nullptr) {
         RECT r = {X(x0), X(y0), X(x1), X(y1)}; HFONT old = (HFONT)SelectObject(dc, f); SetBkMode(dc, TRANSPARENT);
@@ -223,6 +226,8 @@ static void paintModern(HDC dc) {
     g.fill(M_RC_MIN.left + 4, M_RC_MIN.bottom - 5, M_RC_MIN.right - 4, M_RC_MIN.bottom - 3, M_TEXT);
     g.line(M_RC_CLOSE.left + 5, M_RC_CLOSE.top + 3, M_RC_CLOSE.right - 5, M_RC_CLOSE.bottom - 3, M_TEXT, 1.2);
     g.line(M_RC_CLOSE.right - 5, M_RC_CLOSE.top + 3, M_RC_CLOSE.left + 5, M_RC_CLOSE.bottom - 3, M_TEXT, 1.2);
+    { wchar_t hs[40]; if (g_haas > 0) swprintf_s(hs, L"HAAS %d%%  %d ms", g_haas, g_haasDelay); else wcscpy_s(hs, L"HAAS OFF");
+      g.text(M_RC_MIN.left - 10, 6, hs, g_haas > 0 ? MS_ACCENT[5] : mix(M_TITLE, M_TEXT, 0.5), fGroup, TA_RIGHT | TA_TOP); }
     // section panels with their coloured header band
     for (int grp = 0; grp < 6; grp++) {
         int first = -1, last = -1; for (int i = 0; i < NSL; i++) if (MS_GROUP[i] == grp) { if (first < 0) first = i; last = i; }
@@ -272,7 +277,7 @@ static void paintModern(HDC dc) {
         if (b < 2) { g.fill(x0 + 9, M_BTN_Y0 + 10, x0 + 17, M_BTN_Y0 + 18, on ? led : mix(M_PANEL, led, 0.25)); g.frame(x0 + 9, M_BTN_Y0 + 10, x0 + 17, M_BTN_Y0 + 18, M_CAP_LO); tx0 += 12; }
         g.textCentered(tx0, M_BTN_Y0, x1, M_BTN_Y1, labels[b], on ? M_WHITE : M_TEXT, fBtn);
     }
-    g.text(MW - 12, M_BTN_Y0 + 4, L"v1.1", M_TEXT, fSmall, TA_RIGHT | TA_TOP); g.text(MW - 12, M_BTN_Y0 + 15, L"josiaslg", M_TEXT, fSmall, TA_RIGHT | TA_TOP);
+    g.text(MW - 12, M_BTN_Y0 + 4, L"v1.2", M_TEXT, fSmall, TA_RIGHT | TA_TOP); g.text(MW - 12, M_BTN_Y0 + 15, L"josiaslg", M_TEXT, fSmall, TA_RIGHT | TA_TOP);
     g.frame(0, 0, MW, MH, M_LINE);
     for (HFONT f : {fTitle, fGroup, fSub, fLcd, fBtn, fTiny, fSmall}) DeleteObject(f);
 }
@@ -379,6 +384,7 @@ static void iniSet(const wchar_t* sec, const wchar_t* key, const wchar_t* val) {
 static void saveState() {   // everything the user can set, so the next start looks exactly like the last close
     iniSet(L"State", L"Values", valuesToString(g_val).c_str());
     iniSet(L"State", L"Boost", g_boost ? L"1" : L"0");
+    iniSet(L"State", L"Haas", std::to_wstring(g_haas).c_str()); iniSet(L"State", L"HaasDelay", std::to_wstring(g_haasDelay).c_str());
     iniSet(L"State", L"LastPreset", g_lastPreset.c_str());
     iniSet(L"State", L"Template", std::to_wstring(g_look).c_str());
     iniSet(L"State", L"Size", std::to_wstring(g_zoom10).c_str());
@@ -399,10 +405,12 @@ static bool loadState() {   // returns true if a saved state existed
     if (v.empty() || !stringToValues(v, vals)) return false;
     for (int i = 0; i < NSL; i++) g_val[i] = vals[i];
     g_boost = iniGet(L"State", L"Boost", L"0") == L"1";
+    g_haas = std::clamp(_wtoi(iniGet(L"State", L"Haas", L"0").c_str()), 0, 100);
+    g_haasDelay = std::clamp(_wtoi(iniGet(L"State", L"HaasDelay", L"15").c_str()), 1, 40);
     g_lastPreset = iniGet(L"State", L"LastPreset");
     return true;
 }
-static void pushAll() { for (int i = 0; i < NSL; i++) regWrite(SL_NAMES[i], g_val[i]); regWrite(L"Boost", g_boost); regWrite(L"Power", g_power); }
+static void pushAll() { for (int i = 0; i < NSL; i++) regWrite(SL_NAMES[i], g_val[i]); regWrite(L"Boost", g_boost); regWrite(L"Haas", g_haas); regWrite(L"HaasDelay", g_haasDelay); regWrite(L"Power", g_power); }
 static void applyPreset(const Preset& p) { for (int i = 0; i < NSL; i++) { g_val[i] = p.v[i]; regWrite(SL_NAMES[i], p.v[i]); } g_lastPreset = p.name; saveState(); redraw(); }
 
 // ---------------------------------------------------------------- start with Windows (HKCU Run, starts in the tray)
@@ -483,6 +491,35 @@ static void showPresetsMenu() {
     else if (id >= 100 && id - 100 < (int)g_presets.size()) applyPreset(g_presets[id - 100]);
 }
 // Closing the program switches the effect off in Windows and exits (the panel running == effect on).
+// ---------------------------------------------------------------- Haas stereo widening (optional, off by default)
+struct HaasPreset { const wchar_t* name; int amount, delay; };
+static const HaasPreset HAAS[4] = {{L"Off", 0, 15}, {L"Subtle (25%, 12 ms)", 25, 12}, {L"Medium (50%, 16 ms)", 50, 16}, {L"Wide (80%, 20 ms)", 80, 20}};
+static void setHaas(int amount, int delay) {
+    g_haas = std::clamp(amount, 0, 100); g_haasDelay = std::clamp(delay, 1, 40);
+    regWrite(L"Haas", g_haas); regWrite(L"HaasDelay", g_haasDelay); saveState(); redraw();
+}
+static HMENU haasMenu() {   // ids 31..35
+    HMENU m = CreatePopupMenu(); bool matched = false;
+    for (int i = 0; i < 4; i++) {
+        bool on = (i == 0) ? g_haas == 0 : (g_haas == HAAS[i].amount && g_haasDelay == HAAS[i].delay); matched |= on;
+        AppendMenuW(m, MF_STRING | (on ? MF_CHECKED : 0), 31 + i, HAAS[i].name);
+    }
+    bool custom = g_haas > 0 && !matched; wchar_t c[64];
+    if (custom) swprintf_s(c, L"Custom (%d%%, %d ms)...", g_haas, g_haasDelay); else wcscpy_s(c, L"Custom...");
+    AppendMenuW(m, MF_STRING | (custom ? MF_CHECKED : 0), 35, c);
+    return m;
+}
+static bool haasCommand(int id) {   // true if the id belonged to the Haas submenu
+    if (id >= 31 && id <= 34) { setHaas(HAAS[id - 31].amount, HAAS[id - 31].delay); return true; }
+    if (id != 35) return false;
+    wchar_t cur[32]; swprintf_s(cur, L"%d,%d", g_haas > 0 ? g_haas : 50, g_haasDelay);
+    if (inputBox(g_wnd, L"Stereo width (Haas)", L"Amount 0-100 and delay in ms 1-40, separated by a comma (0 = off):", cur)) {
+        int a = _wtoi(g_inputResult.c_str()); size_t p = g_inputResult.find(L',');
+        int d = (p == std::wstring::npos) ? g_haasDelay : _wtoi(g_inputResult.c_str() + p + 1);
+        setHaas(a, d);
+    }
+    return true;
+}
 static void exitApp(HWND h) { saveState(); g_power = false; regWrite(L"Power", 0); DestroyWindow(h); }
 
 // ---------------------------------------------------------------- progress window while an elevated helper runs
@@ -554,6 +591,7 @@ static LRESULT CALLBACK wndProc(HWND h, UINT m, WPARAM wp, LPARAM lp) {
             HMENU lk = CreatePopupMenu(); const wchar_t* looks[] = {L"Classic (high definition)", L"Original skin (pixels)", L"Modern (mixer)"};
             for (int l = 0; l < 3; l++) AppendMenuW(lk, MF_STRING | (g_look == l ? MF_CHECKED : 0), 21 + l, looks[l]);
             AppendMenuW(mnu, MF_POPUP, (UINT_PTR)lk, L"Template");
+            AppendMenuW(mnu, MF_POPUP, (UINT_PTR)haasMenu(), L"Stereo width (Haas)");
             AppendMenuW(mnu, MF_STRING | (autostartEnabled() ? MF_CHECKED : 0), 4, L"Start with Windows");
             AppendMenuW(mnu, MF_SEPARATOR, 0, nullptr); AppendMenuW(mnu, MF_STRING, 5, L"Uninstall Enhancer Reloaded...");
             AppendMenuW(mnu, MF_SEPARATOR, 0, nullptr); AppendMenuW(mnu, MF_STRING, 3, L"Exit (effect off)");
@@ -564,6 +602,7 @@ static LRESULT CALLBACK wndProc(HWND h, UINT m, WPARAM wp, LPARAM lp) {
             else if (id == 3) exitApp(h);
             else if (id == 4) setAutostart(!autostartEnabled());
             else if (id >= 21 && id <= 23) { applyLook(h, g_zoom10, id - 21); showPanel(h); }
+            else if (haasCommand(id)) {}
             else if (id == 5) {
                 if (MessageBoxW(h, L"Remove Enhancer Reloaded from Windows?\n\nThe audio component will be unregistered from every output, the original settings restored, the installed files deleted and the program will close. This program file itself stays where it is (delete it if you want).", L"Uninstall Enhancer Reloaded", MB_YESNO | MB_ICONQUESTION | MB_DEFBUTTON2) == IDYES) {
                     DWORD code = 1;
@@ -594,12 +633,12 @@ static LRESULT CALLBACK wndProc(HWND h, UINT m, WPARAM wp, LPARAM lp) {
         else if (b == 2) showPresetsMenu();
         else if (b == 3) ShellExecuteW(h, L"open", L"C:\\Program Files (x86)\\Winamp\\Plugins\\Enhancer\\017\\enhancer.htm", nullptr, nullptr, SW_SHOW);
         else if (b == 4) MessageBoxW(h,
-            L"Enhancer Reloaded 1.1\n\n"
+            L"Enhancer Reloaded 1.2\n\n"
             L"System-wide Windows port (Audio Processing Object) of the Winamp plugin \"Enhancer 0.17\" by Adrian Iosca (2001).\n"
             L"The algorithm was recovered by reverse engineering and validated sample-exact against the original DLL.\n\n"
             L"Author: josiaslg\nGitHub: https://github.com/josiaslg/Enhancer-Reloaded\nE-mail: josiaslg@bsd.com.br\n\n"
             L"License: BSD 2-Clause. The original skin bitmap belongs to the Enhancer 0.17 author.\n"
-            L"Right-click the panel for size, template (classic / original skin / modern mixer) and tray options.",
+            L"Right-click the panel for size, template (classic / original skin / modern mixer), the optional Haas stereo widening (off by default, not part of the original) and tray options.",
             L"About Enhancer", MB_OK | MB_ICONINFORMATION);
         return 0;
     }
@@ -621,6 +660,7 @@ static LRESULT CALLBACK wndProc(HWND h, UINT m, WPARAM wp, LPARAM lp) {
         HMENU lk = CreatePopupMenu(); const wchar_t* looks[] = {L"Classic (high definition)", L"Original skin (pixels)", L"Modern (mixer)"};
         for (int l = 0; l < 3; l++) AppendMenuW(lk, MF_STRING | (g_look == l ? MF_CHECKED : 0), 21 + l, looks[l]);
         AppendMenuW(mnu, MF_POPUP, (UINT_PTR)lk, L"Template");
+        AppendMenuW(mnu, MF_POPUP, (UINT_PTR)haasMenu(), L"Stereo width (Haas)");
         AppendMenuW(mnu, MF_STRING | (autostartEnabled() ? MF_CHECKED : 0), 4, L"Start with Windows");
         AppendMenuW(mnu, MF_SEPARATOR, 0, nullptr); AppendMenuW(mnu, MF_STRING, 3, L"Exit (effect off)");
         if (GetWindowLongPtr(h, GWL_EXSTYLE) & WS_EX_TOPMOST) CheckMenuItem(mnu, 2, MF_CHECKED);
@@ -631,6 +671,7 @@ static LRESULT CALLBACK wndProc(HWND h, UINT m, WPARAM wp, LPARAM lp) {
         else if (id == 4) setAutostart(!autostartEnabled());
         else if (id >= 11 && id <= 15) { const int zooms[] = {10, 15, 20, 30, 40}; applyLook(h, zooms[id - 11], g_look); }
         else if (id >= 21 && id <= 23) applyLook(h, g_zoom10, id - 21);
+        else if (haasCommand(id)) {}
         return 0;
     }
     case WM_DESTROY: KillTimer(h, 1); trayRemove(); PostQuitMessage(0); return 0;
@@ -669,7 +710,12 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, LPWSTR cmdLine, int) {
     }
     bool startInTray = cmdLine && wcsstr(cmdLine, L"--tray") != nullptr;
     HANDLE single = CreateMutexW(nullptr, TRUE, L"Local\\EnhancerSkin.single");
-    if (GetLastError() == ERROR_ALREADY_EXISTS) {   // second instance: bring the running panel back (or explain the wait)
+    bool secondInstance = GetLastError() == ERROR_ALREADY_EXISTS;
+    // a different build started from outside Program Files while the installed panel is running: that is an update,
+    // not a "bring the panel to front" (the update flow below closes the running panel first)
+    bool carriesUpdate = secondInstance && !inst::runningFromInstallDir() && inst::isInstalled() &&
+        (!inst::installedDllMatches(inst, IDR_APODLL) || (inst::fileExists(inst::installExePath()) && !inst::installedExeMatches()));
+    if (secondInstance && !carriesUpdate) {   // second instance: bring the running panel back (or explain the wait)
         HWND other = FindWindowW(L"EnhancerSkinWnd", nullptr);
         if (other) { ShowWindow(other, SW_SHOW); SetForegroundWindow(other); }
         else MessageBoxW(nullptr, L"Enhancer Reloaded is already starting (or installing its audio component).\nPlease wait a few seconds; the panel will appear by itself.", L"Enhancer Reloaded", MB_ICONINFORMATION);

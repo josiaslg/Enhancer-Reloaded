@@ -41,20 +41,51 @@ the APO polls it every 300 ms and publishes its automatic gain (`AutoGain`) for 
 
 ## Using the panel
 
-- Ten sliders as in the original (Volume, Harmonic Bass/Range, Drum Bass/Range, Dry Signal, Harmonic
-  Treble/Range, Ambience/Range). Scale is the original one: Volume 50 = 0 dB (0.4 dB per step), Dry 100 = 0 dB,
-  effect sliders at 0 = off. Drag the knob, click on the groove or use the mouse wheel.
-- **Power** (LED lit = effect on), **Boost**, **Presets** (11 factory presets, your own presets, save/delete,
-  reset), **Help** (original help file, if Winamp is installed), **About**.
-- Right-click the panel: minimize, always on top, size (1x–4x), template, start with Windows, exit.
-- **Template**: *Classic* (original layout redrawn in high definition), *Original skin* (the pixel skin
-  from the Winamp plug-in) or *Modern (mixer)*: a flat dark console with one vertical fader per
-  parameter grouped by section, digital readouts (Volume in dB, effects 0–100/OFF), a limiter meter next to
-  the Volume fader (lights red while the automatic gain is pulling the level down) and flat buttons.
-- Tray icon: open panel, power, template, start with Windows, uninstall, exit.
-- Settings and presets are kept in `EnhancerReloaded.ini` next to the exe (`[State]` = last slider values, Boost,
-  last preset, template, size, position, always-on-top; `[Presets]` = `name=v1,...,v10`). Everything is
-  restored on the next start exactly as it was left (also on Windows shutdown).
+**Sliders.** Ten sliders as in the original (Volume, Harmonic Bass/Range, Drum Bass/Range, Dry Signal,
+Harmonic Treble/Range, Ambience/Range). Scale is the original one: Volume 50 = 0 dB (0.4 dB per step),
+Dry 100 = 0 dB, effect sliders at 0 = off. Drag the knob, click on the groove or use the mouse wheel.
+The red "max" marker (Classic/Original) or the LIM meter (Modern) shows where the automatic gain is
+holding the level when Volume is too high.
+
+**Buttons.**
+- **Power** – effect on/off (LED lit = on). With Power off the sliders do nothing.
+- **Boost** – the original loudness "Boost" stage.
+- **Presets** – menu with the 11 factory presets, your own presets, *Save as…*, *Delete* and *Reset*.
+  The active preset is checked; touching a slider clears the check.
+- **Help** – opens the original help file, if Winamp with Enhancer 0.17 is installed.
+- **About** – version, author, license.
+
+**Title bar.** Drag to move. The minimize button hides the panel to the tray with the effect running;
+the close button (and *Exit*) powers the effect off and quits.
+
+**Right-click menu (on the panel).**
+- *Minimize* – hide to the tray (effect stays on).
+- *Always on top* – keep the panel above other windows.
+- *Size* – 1x, 1.5x, 2x, 3x, 4x (the Original skin uses whole steps only).
+- *Template* – **Classic (high definition)**: the original layout redrawn as vectors, crisp at any size;
+  **Original skin (pixels)**: the sprite sheet from the Winamp plug-in; **Modern (mixer)**: a flat dark
+  console with one vertical fader per parameter grouped by section, digital readouts (Volume in dB,
+  effects 0–100/OFF), a limiter LED meter next to the Volume fader and flat buttons.
+- *Stereo width (Haas)* – optional stereo widening, **off by default** and not part of the original
+  plug-in. The mid signal delayed by a few milliseconds is added to the left and subtracted from the right
+  channel (before the limiter), so the image gets wider while the mono sum stays untouched. *Off*,
+  *Subtle* (25 %, 12 ms), *Medium* (50 %, 16 ms), *Wide* (80 %, 20 ms) or *Custom…* (amount 0–100 and delay
+  1–40 ms, typed as `50,16`). Independent of the presets; the Modern template shows the state in its title bar.
+- *Start with Windows* – adds/removes a Run entry; the panel then starts hidden in the tray with the effect on.
+- *Exit (effect off)*.
+
+**Tray icon (purple hat; grey when the effect is off).** Left click opens the panel. Right click:
+*Open panel*, *Power (effect on)*, *Template*, *Stereo width (Haas)*, *Start with Windows*,
+*Uninstall Enhancer Reloaded…* and *Exit (effect off)*.
+
+**Settings file.** Everything is kept in `EnhancerReloaded.ini` (`%APPDATA%\EnhancerReloaded` when
+installed, next to the exe when run portable): `[State]` = slider values, Boost, last preset, Haas
+amount/delay, template, size, window position, always-on-top; `[Presets]` = `name=v1,...,v10`. It is saved on
+every change, on exit and on Windows shutdown, and restored on the next start exactly as it was left.
+
+**Lifecycle.** Panel running = effect on. Opening the panel powers the effect on with the saved settings;
+closing it powers the effect off. Running a newer `EnhancerReloaded.exe` while the installed panel is
+open offers to update it.
 
 ## Repository layout
 
@@ -183,21 +214,52 @@ lê a cada 300 ms e publica o ganho automático (`AutoGain`) para o indicador "m
 
 ## Usando o painel
 
-- Dez sliders como no original (Volume, Harmonic Bass/Range, Drum Bass/Range, Dry Signal, Harmonic
-  Treble/Range, Ambience/Range). A escala é a original: Volume 50 = 0 dB (0,4 dB por passo), Dry 100 = 0 dB,
-  sliders de efeito em 0 = desligado. Arraste o knob, clique na trilha ou use a roda do mouse.
-- **Power** (LED aceso = efeito ligado), **Boost**, **Presets** (11 de fábrica, os seus, salvar/apagar, zerar),
-  **Help** (ajuda original, se o Winamp estiver instalado), **About**.
-- Botão direito no painel: minimizar, sempre no topo, tamanho (1x–4x), template, iniciar com o Windows, sair.
-- **Template**: *Classic* (layout original redesenhado em alta definição), *Original skin* (a skin de pixels
-  do plug-in do Winamp) ou *Modern (mixer)*: uma mesa de som escura e plana com um fader vertical por
-  parâmetro agrupado por seção, mostradores digitais (Volume em dB, efeitos 0–100/OFF), um medidor de
-  limitador ao lado do fader de Volume (acende vermelho enquanto o ganho automático está reduzindo o nível) e
-  botões planos.
-- Ícone da bandeja: abrir painel, power, template, iniciar com o Windows, desinstalar, sair.
-- Configurações e presets ficam em `EnhancerReloaded.ini` ao lado do exe (`[State]` = últimos valores dos
-  controles, Boost, último preset, template, tamanho, posição, sempre no topo; `[Presets]` = `nome=v1,...,v10`).
-  Tudo é restaurado na próxima abertura exatamente como foi deixado (também no desligamento do Windows).
+**Sliders.** Dez sliders como no original (Volume, Harmonic Bass/Range, Drum Bass/Range, Dry Signal,
+Harmonic Treble/Range, Ambience/Range). A escala é a original: Volume 50 = 0 dB (0,4 dB por passo),
+Dry 100 = 0 dB, sliders de efeito em 0 = desligado. Arraste o knob, clique na trilha ou use a roda do
+mouse. A marca vermelha "max" (Classic/Original) ou o medidor LIM (Modern) mostra onde o ganho automático
+está segurando o nível quando o Volume está alto demais.
+
+**Botões.**
+- **Power** – liga/desliga o efeito (LED aceso = ligado). Com o Power desligado os sliders não fazem nada.
+- **Boost** – o estágio "Boost" de loudness do original.
+- **Presets** – menu com os 11 presets de fábrica, os seus, *Save as…*, *Delete* e *Reset*. O preset ativo
+  fica marcado; mexer num slider tira a marca.
+- **Help** – abre a ajuda original, se o Winamp com o Enhancer 0.17 estiver instalado.
+- **About** – versão, autor, licença.
+
+**Barra de título.** Arraste para mover. O botão de minimizar esconde o painel na bandeja com o efeito
+rodando; o botão de fechar (e *Exit*) desliga o efeito e sai.
+
+**Menu do botão direito (no painel).**
+- *Minimize* – esconde na bandeja (efeito continua ligado).
+- *Always on top* – mantém o painel acima das outras janelas.
+- *Size* – 1x, 1,5x, 2x, 3x, 4x (a skin original só usa passos inteiros).
+- *Template* – **Classic (high definition)**: o layout original redesenhado em vetores, nítido em qualquer
+  tamanho; **Original skin (pixels)**: a skin do plug-in do Winamp; **Modern (mixer)**: mesa de som escura
+  e plana com um fader vertical por parâmetro agrupado por seção, mostradores digitais (Volume em dB,
+  efeitos 0–100/OFF), medidor de limitador em LEDs ao lado do fader de Volume e botões planos.
+- *Stereo width (Haas)* – alargamento estéreo opcional, **desligado por padrão** e que não existe no
+  plug-in original. O sinal central (mid) atrasado alguns milissegundos é somado ao canal esquerdo e subtraído
+  do direito (antes do limitador): a imagem fica mais larga e a soma mono não muda. *Off*, *Subtle*
+  (25 %, 12 ms), *Medium* (50 %, 16 ms), *Wide* (80 %, 20 ms) ou *Custom…* (quantidade 0–100 e atraso
+  1–40 ms, digitados como `50,16`). Independente dos presets; o template Modern mostra o estado na barra de título.
+- *Start with Windows* – cria/remove a entrada de inicialização; o painel então abre escondido na bandeja com
+  o efeito ligado.
+- *Exit (effect off)*.
+
+**Ícone da bandeja (chapéu roxo; cinza quando o efeito está desligado).** Clique esquerdo abre o painel.
+Clique direito: *Open panel*, *Power (effect on)*, *Template*, *Stereo width (Haas)*, *Start with Windows*,
+*Uninstall Enhancer Reloaded…* e *Exit (effect off)*.
+
+**Arquivo de configuração.** Tudo fica em `EnhancerReloaded.ini` (`%APPDATA%\EnhancerReloaded` quando
+instalado; ao lado do exe quando rodado portátil): `[State]` = valores dos sliders, Boost, último preset,
+quantidade/atraso do Haas, template, tamanho, posição da janela, sempre no topo; `[Presets]` =
+`nome=v1,...,v10`. É salvo a cada mudança, ao sair e no desligamento do Windows, e restaurado na próxima
+abertura exatamente como foi deixado.
+
+**Ciclo de vida.** Painel rodando = efeito ligado. Abrir o painel liga o efeito com as configurações salvas;
+fechar desliga. Executar um `EnhancerReloaded.exe` mais novo com o painel instalado aberto oferece a atualização.
 
 ## Estrutura do repositório
 

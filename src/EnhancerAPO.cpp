@@ -52,6 +52,7 @@ static EnhancerDSP::Params readParams() {
     rd(L"DrumBassRange", p.drumBassRange, 0, 100); rd(L"Dry", p.dry, 0, 100);
     rd(L"HarmTreble", p.harmTreble, 0, 100); rd(L"HarmTrebleRange", p.harmTrebleRange, 0, 100);
     rd(L"Ambience", p.ambience, 0, 100);   rd(L"AmbienceRange", p.ambienceRange, 0, 100);
+    rd(L"Haas", p.haas, 0, 100);           rd(L"HaasDelay", p.haasDelay, 1, 40);
     rd(L"Boost", b, 0, 1); rd(L"Power", pw, 0, 1);
     p.boost = b != 0; p.power = pw != 0;
     RegCloseKey(k);
